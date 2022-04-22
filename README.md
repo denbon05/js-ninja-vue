@@ -1,5 +1,8 @@
 # js-ninja-vue
 
+## Description
+Learning how to properly architecture an application in Vue by refactoring.
+
 ## Project setup
 ```
 npm install

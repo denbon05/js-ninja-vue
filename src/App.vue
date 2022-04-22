@@ -126,7 +126,7 @@
 
               <rect
                 :key="`price_${gIdx}`"
-                v-for="(itemHeight, gIdx) in graph"
+                v-for="(itemHeight, gIdx) in normalizedGraph"
                 :x="dashboardXBy[gIdx]"
                 :y="graphView.graphMaxItemHeight - itemHeight"
                 width="20"
@@ -154,11 +154,15 @@
 // [] 10. Magic strings and numbers (URL, 5000 milliseconds delay, localStorage key, number on page) | Criticality: 1.
 
 // Parallel
-// [x] graph is broken if everywhere identical values
+// [x] normalizedGraph is broken if everywhere identical values
 // [x] When deleting a ticker, the choice remains
 
 import { values } from "lodash";
-import { /*fetchCryptoPrice,*/ fetchTickerList } from "@/api";
+import {
+  fetchTickerList,
+  subscribeToTicker,
+  unsubscribeFromTicker,
+} from "@/api";
 
 export default {
   name: "App",
@@ -186,9 +190,7 @@ export default {
     tickerHints: [],
     allTickerHints: [],
     selectedTicker: null,
-    graphValues: [],
-    // autoUpdate: true,
-    // autoUpdateId: null,
+    graph: [],
     page: 1,
 
     graphView: {
@@ -205,9 +207,9 @@ export default {
       loadContextQuery.isLoading = true;
       try {
         const {
-          data: { Data },
+          data: { Data: tickerList },
         } = await fetchTickerList();
-        this.allTickerHints = Data;
+        this.allTickerHints = tickerList;
         loadContextQuery.isLoading = { isSuccess: true, isLoading: false };
       } catch (err) {
         console.error(err);
@@ -219,23 +221,12 @@ export default {
       }
     },
 
-    subscribeToUpdates(tickerName) {
-      setInterval(async () => {
-        const f = await fetch(
-          `https://min-api.cryptocompare.com/data/price?fsym=${tickerName}&tsyms=USD&api_key=ce3fd966e7a1d10d65f907b20bf000552158fd3ed1bd614110baa0ac6cb57a7e`
-        );
-        const data = await f.json();
-
-        // currentTicker.price =  data.USD > 1 ? data.USD.toFixed(2) : data.USD.toPrecision(2);
-        this.tickers.find(({ name }) => {
-          return name === tickerName;
-        }).price = data.USD > 1 ? data.USD.toFixed(2) : data.USD.toPrecision(2);
-
-        if (this.selectedTicker?.name === tickerName) {
-          this.graphValues.push(data.USD);
-        }
-      }, 5000);
-      this.ticker = "";
+    updateTicker(tickerName, price) {
+      this.tickers
+        .filter((t) => t.name === tickerName)
+        .forEach((t) => {
+          t.price = price;
+        });
     },
 
     selectHint({ symbol }) {
@@ -251,63 +242,20 @@ export default {
           price: "-",
         };
         this.tickers = [...this.tickers, currentTicker];
-        this.subscribeToUpdates(currentTicker.name);
-        // localStorage.setItem(
-        //   "cryptonomicon-list",
-        //   JSON.stringify(this.tickers)
-        // );
-        // this.ticker = "";
       }
     },
 
-    // async loadTickerData({ name: tosym }) {
-    //   this.tickerDataQuery.isLoading = true;
-    //   try {
-    //     const { data } = await fetchCryptoPrice({ tosym });
-    //     if (!data.Response?.match(/error/gi)) {
-    //       const currentPrice = data[tosym];
-    //       this.tickers.find(({ name }) => name === tosym).price = currentPrice;
-    //       this.graphValues = [...this.graphValues, currentPrice];
-    //     }
-    //     this.tickerDataQuery = {
-    //       message: data.Message,
-    //       isLoading: false,
-    //       isSuccess: !data.Response,
-    //     };
-    //   } catch (err) {
-    //     console.error(err);
-    //     this.tickerDataQuery = {
-    //       message: err.message,
-    //       isLoading: false,
-    //       isSuccess: false,
-    //     };
-    //   } finally {
-    //     if (this.autoUpdate) {
-    //       this.autoUpdateId = setTimeout(() => {
-    //         this.loadTickerData({ name: tosym });
-    //       }, 5000);
-    //     }
-    //   }
-    // },
-
     removeDashboard() {
-      this.autoUpdate = false;
-      clearTimeout(this.autoUpdateId);
       this.selectedTicker = null;
     },
 
-    deleteTicker({ name }) {
-      this.tickers = this.tickers.filter((ticker) => ticker.name !== name);
-      if (this.selectedTicker.name === name) {
-        this.selectedTicker = null;
-      }
+    deleteTicker(t) {
+      this.tickers = this.tickers.filter(({ name }) => name !== t.name);
+      unsubscribeFromTicker(t);
     },
 
     selectTicker(t) {
-      // clearTimeout(this.autoUpdateId);
       this.selectedTicker = t;
-      // this.autoUpdate = true;
-      // this.loadTickerData(t);
     },
 
     showSnackBar({ message, isSuccess = true }) {
@@ -352,7 +300,7 @@ export default {
       };
     },
 
-    graph() {
+    normalizedGraph() {
       const {
         graphView: {
           graphItemPerPx,
@@ -360,11 +308,10 @@ export default {
           graphMaxItemHeight,
           firstItemPx,
         },
-        graphValues,
+        graph,
       } = this;
-      const fulFilledDashboard =
-        graphItemPerPx * graphValues.length + firstItemPx;
-      const prices = this.graphValues.slice(
+      const fulFilledDashboard = graphItemPerPx * graph.length + firstItemPx;
+      const prices = this.graph.slice(
         fulFilledDashboard < dashboardWidth - graphItemPerPx * 2
           ? 0
           : (fulFilledDashboard - dashboardWidth) / graphItemPerPx
@@ -372,7 +319,7 @@ export default {
       const maxPrice = Math.max(...prices);
       const minPrice = Math.min(...prices);
       if (maxPrice === minPrice) {
-        return Array(graphValues.length).fill(graphMaxItemHeight / 2);
+        return Array(graph.length).fill(graphMaxItemHeight / 2);
       }
       const res = prices.map((p) => p / (maxPrice / graphMaxItemHeight));
       // console.log(res);
@@ -382,7 +329,7 @@ export default {
     dashboardXBy() {
       const { firstItemPx, graphItemPerPx } = this.graphView;
       let x = firstItemPx;
-      return this.graph.map((_p, idx) => {
+      return this.normalizedGraph.map((_p, idx) => {
         if (idx > 0) x += graphItemPerPx;
         return x;
       });
@@ -391,6 +338,7 @@ export default {
 
   created() {
     this.loadContext();
+    debugger;
 
     const windowData = Object.fromEntries(
       new URL(window.location).searchParams.entries()
@@ -402,14 +350,14 @@ export default {
     if (tickersData) {
       this.tickers = JSON.parse(tickersData);
       this.tickers.forEach(({ name }) => {
-        this.subscribeToUpdates(name);
+        subscribeToTicker(name, this.updateTicker);
       });
     }
   },
 
   watch: {
     selectedTicker() {
-      this.graphValues = [];
+      this.graph = [];
     },
 
     tickers: {
@@ -430,21 +378,7 @@ export default {
 
     filter() {
       this.page = 1;
-
-      // history.pushState(
-      //   null,
-      //   document.title,
-      //   `${window.location.pathname}?filter=${this.filter}&page=${this.page}`
-      // );
     },
-
-    // page() {
-    //   history.pushState(
-    //     null,
-    //     document.title,
-    //     `${window.location.pathname}?filter=${this.filter}&page=${this.page}`
-    //   );
-    // },
 
     tickerDataQuery: {
       handler({ isLoading, isSuccess, message }) {
