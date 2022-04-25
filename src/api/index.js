@@ -1,46 +1,57 @@
 import axios from "axios";
 
-const tickerHandlers = new Map();
+const CRYPTO_API_KEY = process.env.VUE_APP_CRYPTO_API_KEY;
+const AGGREGATE_IDX = "5";
+const tickersHandlers = new Map();
 
-const loadTickers = async () => {
-  if (tickerHandlers.size === 0) {
+const socket = new WebSocket(
+  `wss://streamer.cryptocompare.com/v2?api_key=${CRYPTO_API_KEY}`
+);
+socket.addEventListener("message", (e) => {
+  const {
+    TYPE: type,
+    FROMSYMBOL: currency,
+    PRICE: newPrice,
+  } = JSON.parse(e.data);
+  if (type !== AGGREGATE_IDX || !newPrice) {
     return;
   }
 
-  const cryptoCompareUrl = new URL(
-    "https://min-api.cryptocompare.com/data/pricemulti"
-  );
-  cryptoCompareUrl.searchParams.set(
-    "fsyms",
-    [...tickerHandlers.keys()].join(",")
-  );
-  cryptoCompareUrl.searchParams.set("tsyms", "USD");
+  const handlers = tickersHandlers.get(currency) ?? [];
+  handlers.forEach((fn) => fn(currency, newPrice));
+});
 
-  const rateDataByCurrency = await axios.get(cryptoCompareUrl);
-  const updatedPrices = Object.fromEntries(
-    Object.entries(rateDataByCurrency).map(([currency, rateData]) => [
-      currency,
-      rateData.USD,
-    ])
-  );
-  Object.entries(updatedPrices).forEach(([currency, newPrice]) => {
-    const handlers = tickerHandlers.get(currency) ?? [];
-    handlers.forEach((fn) => fn(newPrice));
+const subscribeToTickerOnWs = (tickerName) => {
+  const message = JSON.stringify({
+    action: "SubAdd",
+    subs: [`5~CCCAGG~${tickerName}~USD`],
   });
+  if (socket.readyState === socket.OPEN) {
+    socket.send(message);
+    return;
+  }
+  socket.addEventListener(
+    "open",
+    () => {
+      socket.send(message);
+    },
+    { once: true }
+  );
 };
 
 export const subscribeToTicker = (tickerName, cb) => {
-  const subscribers = tickerHandlers.get(tickerName) || [];
-  tickerHandlers.set(tickerName, [...subscribers, cb]);
+  const subscribers = tickersHandlers.get(tickerName) || [];
+  tickersHandlers.set(tickerName, [...subscribers, cb]);
+  subscribeToTickerOnWs(tickerName);
 };
 
 export const unsubscribeFromTicker = (ticker) => {
-  tickerHandlers.delete(ticker);
+  tickersHandlers.delete(ticker);
 };
-
-setInterval(loadTickers, 5000);
 
 export const fetchTickerList = async () =>
   await axios.get(
     "https://min-api.cryptocompare.com/data/all/coinlist?summary=true"
   );
+
+// the main goal here is to UPDATE cryptocurrencies, not to receive their pairs

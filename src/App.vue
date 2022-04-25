@@ -13,7 +13,7 @@
       <v-container>
         <v-row>
           <v-col cols="6">
-            <v-form ref="tickerForm" class="d-flex flex-column">
+            <v-form ref="tickerForm" class="d-flex flex-column mt-2">
               <v-text-field
                 style="width: 30%; min-width: 400px"
                 variant="outlined"
@@ -22,6 +22,7 @@
                 v-model="ticker"
                 @keyup.enter="addTicket"
                 :rules="[
+                  (v) => v || 'Ticker name is required',
                   (v) =>
                     !tickers.some(({ name }) => name === v.toUpperCase()) ||
                     'Тhat ticker has already been added',
@@ -70,7 +71,7 @@
 
         <hr v-if="tickers.length" class="border-gray-600 my-3" />
         <v-row>
-          <v-col cols="4" :key="idx" v-for="(t, idx) in paginadedTickers">
+          <v-col cols="4" :key="idx" v-for="(t, idx) in paginatedTickers">
             <v-card
               class="d-flex flex-column align-center py-3"
               :variant="
@@ -89,7 +90,7 @@
                 <div class="border-gray-200"></div>
               </div>
               <button
-                @click.stop="deleteTicker(t)"
+                @click.stop="removeTicker(t)"
                 class="d-flex justify-center"
               >
                 <v-icon> mdi-delete-outline </v-icon>
@@ -222,6 +223,7 @@ export default {
     },
 
     updateTicker(tickerName, price) {
+      // debugger;
       this.tickers
         .filter((t) => t.name === tickerName)
         .forEach((t) => {
@@ -249,7 +251,7 @@ export default {
       this.selectedTicker = null;
     },
 
-    deleteTicker(t) {
+    removeTicker(t) {
       this.tickers = this.tickers.filter(({ name }) => name !== t.name);
       unsubscribeFromTicker(t);
     },
@@ -282,7 +284,7 @@ export default {
       );
     },
 
-    paginadedTickers() {
+    paginatedTickers() {
       return this.filteredTickers.slice(
         this.beginPaginationIdx,
         this.endPaginationIdx
@@ -310,7 +312,8 @@ export default {
         },
         graph,
       } = this;
-      const fulFilledDashboard = graphItemPerPx * graph.length + firstItemPx;
+      const fulFilledDashboard =
+        graphItemPerPx * graph.length + firstItemPx * 2;
       const prices = this.graph.slice(
         fulFilledDashboard < dashboardWidth - graphItemPerPx * 2
           ? 0
@@ -338,7 +341,6 @@ export default {
 
   created() {
     this.loadContext();
-    debugger;
 
     const windowData = Object.fromEntries(
       new URL(window.location).searchParams.entries()
@@ -366,6 +368,12 @@ export default {
           "cryptonomicon-list",
           JSON.stringify(this.tickers)
         );
+        if (this.selectedTicker) {
+          const { price: newPrice } = this.tickers.find(
+            ({ name }) => name === this.selectedTicker.name
+          );
+          this.graph.push(newPrice);
+        }
       },
       deep: true,
     },
