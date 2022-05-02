@@ -20,12 +20,12 @@
                 label="Ticker"
                 autofocus
                 v-model="ticker"
-                @keyup.enter="addTicket"
+                @keyup.enter="() => addTicket()"
                 :rules="[
-                  (v) => v || 'Ticker name is required',
+                  (v) => !!v || 'Ticker name is required',
                   (v) =>
                     !tickers.some(({ name }) => name === v.toUpperCase()) ||
-                    'Тhat ticker has already been added',
+                    'That ticker has already been added',
                 ]"
               ></v-text-field>
               <section
@@ -37,7 +37,7 @@
                   :key="hint"
                   v-for="hint in tickerHints"
                   variant="outlined"
-                  @click="addTicket()"
+                  @click="addTicket(hint)"
                   >{{ hint }}</v-btn
                 >
               </section>
@@ -150,7 +150,7 @@
 // [] 3. Number of requests | Criticality: 4.
 // [x] 8. When removing a ticker, LocalStorage | Criticality: 4.
 // [x] 1. Same code in Watch | Criticality: 3.
-// [] 9. Localstorage and anonymous tabs | Criticality: 3.
+// [] 9. LocalStorage and anonymous tabs | Criticality: 3.
 // [] 7. The schedule is terribly looking if there are many prices | Criticality: 2.
 // [] 10. Magic strings and numbers (URL, 5000 milliseconds delay, localStorage key, number on page) | Criticality: 1.
 
@@ -223,11 +223,13 @@ export default {
     },
 
     updateTicker(tickerName, price) {
-      // debugger;
       this.tickers
         .filter((t) => t.name === tickerName)
         .forEach((t) => {
           t.price = price;
+          if (this.selectedTicker?.name === t?.name) {
+            this.graph.push(t.price);
+          }
         });
     },
 
@@ -236,14 +238,15 @@ export default {
       this.addTicket();
     },
 
-    async addTicket() {
+    async addTicket(tickerName) {
       const { valid: isValidForm } = await this.$refs.tickerForm.validate();
       if (isValidForm) {
         const currentTicker = {
-          name: this.ticker.toUpperCase(),
+          name: tickerName ?? this.ticker.toUpperCase(),
           price: "-",
         };
         this.tickers = [...this.tickers, currentTicker];
+        this.ticker = "";
       }
     },
 
@@ -279,8 +282,9 @@ export default {
     },
 
     filteredTickers() {
-      return this.tickers.filter(({ name }) =>
-        name.includes(this.filter.toUpperCase())
+      console.log(this.tickers);
+      return this.tickers.filter(
+        ({ name }) => name && name.includes(this.filter.toUpperCase())
       );
     },
 
@@ -368,12 +372,9 @@ export default {
           "cryptonomicon-list",
           JSON.stringify(this.tickers)
         );
-        if (this.selectedTicker) {
-          const { price: newPrice } = this.tickers.find(
-            ({ name }) => name === this.selectedTicker.name
-          );
-          this.graph.push(newPrice);
-        }
+        this.tickers.forEach(({ name }) => {
+          subscribeToTicker(name, this.updateTicker);
+        });
       },
       deep: true,
     },

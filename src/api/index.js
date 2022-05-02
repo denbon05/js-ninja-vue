@@ -7,18 +7,30 @@ const tickersHandlers = new Map();
 const socket = new WebSocket(
   `wss://streamer.cryptocompare.com/v2?api_key=${CRYPTO_API_KEY}`
 );
+
+const channel = new BroadcastChannel("crypto");
+const receiver = new BroadcastChannel("crypto");
+
+receiver.addEventListener("message", ({ data }) => {
+  const { currency: curr, newPrice: price } = JSON.parse(data);
+  const handlers = tickersHandlers.get(curr) ?? [];
+  handlers.forEach((fn) => fn(curr, price));
+});
+
 socket.addEventListener("message", (e) => {
   const {
     TYPE: type,
     FROMSYMBOL: currency,
     PRICE: newPrice,
   } = JSON.parse(e.data);
+
   if (type !== AGGREGATE_IDX || !newPrice) {
     return;
   }
 
   const handlers = tickersHandlers.get(currency) ?? [];
   handlers.forEach((fn) => fn(currency, newPrice));
+  channel.postMessage(JSON.stringify({ currency, newPrice }));
 });
 
 const subscribeToTickerOnWs = (tickerName) => {
@@ -30,6 +42,7 @@ const subscribeToTickerOnWs = (tickerName) => {
     socket.send(message);
     return;
   }
+
   socket.addEventListener(
     "open",
     () => {
