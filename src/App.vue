@@ -11,7 +11,7 @@
   <v-app>
     <v-main>
       <v-container>
-        <v-row>
+        <v-row justify="center">
           <v-col cols="6">
             <v-form ref="tickerForm" class="d-flex flex-column mt-2">
               <v-text-field
@@ -101,39 +101,25 @@
         </v-row>
         <hr v-if="tickers.length" class="border-gray-600 my-4" />
         <v-row v-if="selectedTicker">
-          <v-col>
+          <v-col cols="12">
             <section class="d-flex justify-space-between">
               <h3 class="subtitle">{{ selectedTicker?.name }} - USD</h3>
               <button @click="removeDashboard">
                 <v-icon>mdi-close</v-icon>
               </button>
             </section>
-
-            <svg height="400" :width="graphView.dashboardWidth">
+            <svg
+              class="sparkline"
+              :width="width"
+              :height="height"
+              :stroke-width="stroke"
+            >
+              <path class="sparkline--line" :d="shape" fill="none"></path>
               <path
-                id="lineAB"
-                :d="`M 0 0 v ${graphView.graphMaxItemHeight + 5}`"
-                stroke="grey"
-                stroke-width="2"
-                fill="none"
-              />
-              <path
-                id="lineBC"
-                :d="`M 0 ${graphView.graphMaxItemHeight + 5} h 1000`"
-                stroke="grey"
-                stroke-width="2"
-                fill="none"
-              />
-
-              <rect
-                :key="`price_${gIdx}`"
-                v-for="(itemHeight, gIdx) in normalizedGraph"
-                :x="dashboardXBy[gIdx]"
-                :y="graphView.graphMaxItemHeight - itemHeight"
-                width="20"
-                :height="itemHeight"
-                fill="#5a20e3"
-              />
+                class="sparkline--fill"
+                :d="[shape, fillEndPath].join(' ')"
+                stroke="none"
+              ></path>
             </svg>
           </v-col>
         </v-row>
@@ -169,6 +155,10 @@ export default {
   name: "App",
 
   data: () => ({
+    stroke: 3,
+    width: 700,
+    height: 200,
+
     snackbar: {
       isVisible: false,
       message: "",
@@ -203,6 +193,10 @@ export default {
   }),
 
   methods: {
+    onResize() {
+      return window.innerWidth;
+    },
+
     async loadContext() {
       const { loadContextQuery } = this;
       loadContextQuery.isLoading = true;
@@ -273,6 +267,48 @@ export default {
   },
 
   computed: {
+    shape() {
+      const stroke = this.stroke;
+      const width = this.width;
+      const height = this.height - stroke * 2;
+
+      const normalizedGraph = this.normalizedGraph || [];
+      const highestPoint = Math.max.apply(null, normalizedGraph);
+      const coordinates = [];
+      const totalPoints = this.normalizedGraph.length - 1;
+
+      normalizedGraph.forEach((item, n) => {
+        const x = (n / totalPoints) * width + stroke;
+        const y = height - (item / highestPoint) * height + stroke;
+
+        coordinates.push({ x, y });
+      });
+
+      if (!coordinates[0]) {
+        return (
+          "M 0 " +
+          this.stroke +
+          " L 0 " +
+          this.stroke +
+          " L " +
+          this.width +
+          " " +
+          this.stroke
+        );
+      }
+
+      const path = [];
+
+      coordinates.forEach((point) =>
+        path.push(["L", point.x, point.y].join(" "))
+      );
+
+      return ["M" + coordinates[0].x, coordinates[0].y, ...path].join(" ");
+    },
+    fillEndPath() {
+      return `V ${this.height} L 4 ${this.height} Z`;
+    },
+
     beginPaginationIdx() {
       return (this.page - 1) * 6;
     },
@@ -282,7 +318,7 @@ export default {
     },
 
     filteredTickers() {
-      console.log(this.tickers);
+      // console.log(this.tickers);
       return this.tickers.filter(
         ({ name }) => name && name.includes(this.filter.toUpperCase())
       );
@@ -307,30 +343,16 @@ export default {
     },
 
     normalizedGraph() {
-      const {
-        graphView: {
-          graphItemPerPx,
-          dashboardWidth,
-          graphMaxItemHeight,
-          firstItemPx,
-        },
-        graph,
-      } = this;
-      const fulFilledDashboard =
-        graphItemPerPx * graph.length + firstItemPx * 2;
-      const prices = this.graph.slice(
-        fulFilledDashboard < dashboardWidth - graphItemPerPx * 2
-          ? 0
-          : (fulFilledDashboard - dashboardWidth) / graphItemPerPx
-      );
-      const maxPrice = Math.max(...prices);
-      const minPrice = Math.min(...prices);
-      if (maxPrice === minPrice) {
-        return Array(graph.length).fill(graphMaxItemHeight / 2);
+      const maxValue = Math.max(...this.graph);
+      const minValue = Math.min(...this.graph);
+
+      if (maxValue === minValue) {
+        return this.graph.map(() => 50);
       }
-      const res = prices.map((p) => p / (maxPrice / graphMaxItemHeight));
-      // console.log(res);
-      return res;
+
+      return this.graph.map(
+        (price) => 5 + ((price - minValue) * 95) / (maxValue - minValue)
+      );
     },
 
     dashboardXBy() {
@@ -345,6 +367,7 @@ export default {
 
   created() {
     this.loadContext();
+    this.width = this.onResize() / 1.5;
 
     const windowData = Object.fromEntries(
       new URL(window.location).searchParams.entries()
@@ -424,3 +447,15 @@ export default {
   },
 };
 </script>
+
+<style>
+svg {
+  stroke: #1f8ceb;
+  fill: rgba(31, 140, 235, 0.06);
+  transition: all 1s ease-in-out;
+}
+
+svg path {
+  box-sizing: border-box;
+}
+</style>
