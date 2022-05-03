@@ -81,10 +81,8 @@
               @click="selectTicker(t)"
             >
               <div class="pa-4 text-center">
-                <dt class="text-sm font-medium text-gray-500 truncate">
-                  {{ t.name }} - USD
-                </dt>
-                <dd class="mt-1 text-3xl font-semibold text-gray-900">
+                <dt class="text-subtitle-2">{{ t.name }} - USD</dt>
+                <dd class="text-subtitle-1">
                   {{ t.price }}
                 </dd>
                 <div class="border-gray-200"></div>
@@ -145,11 +143,8 @@
 // [x] When deleting a ticker, the choice remains
 
 import { values } from "lodash";
-import {
-  fetchTickerList,
-  subscribeToTicker,
-  unsubscribeFromTicker,
-} from "@/api";
+import { subscribeToTicker, unsubscribeFromTicker } from "./helpers";
+import { fetchTickerList } from "@/api";
 
 export default {
   name: "App",
@@ -250,7 +245,7 @@ export default {
 
     removeTicker(t) {
       this.tickers = this.tickers.filter(({ name }) => name !== t.name);
-      unsubscribeFromTicker(t);
+      unsubscribeFromTicker(t.name);
     },
 
     selectTicker(t) {

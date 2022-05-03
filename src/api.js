@@ -1,8 +1,8 @@
 import axios from "axios";
+import { tickersHandlers } from "@/helpers";
 
 const CRYPTO_API_KEY = process.env.VUE_APP_CRYPTO_API_KEY;
 const AGGREGATE_IDX = "5";
-const tickersHandlers = new Map();
 
 const socket = new WebSocket(
   `wss://streamer.cryptocompare.com/v2?api_key=${CRYPTO_API_KEY}`
@@ -33,7 +33,7 @@ socket.addEventListener("message", (e) => {
   channel.postMessage(JSON.stringify({ currency, newPrice }));
 });
 
-const subscribeToTickerOnWs = (tickerName) => {
+export const subscribeToTickerOnWs = (tickerName) => {
   const message = JSON.stringify({
     action: "SubAdd",
     subs: [`5~CCCAGG~${tickerName}~USD`],
@@ -50,16 +50,6 @@ const subscribeToTickerOnWs = (tickerName) => {
     },
     { once: true }
   );
-};
-
-export const subscribeToTicker = (tickerName, cb) => {
-  const subscribers = tickersHandlers.get(tickerName) || [];
-  tickersHandlers.set(tickerName, [...subscribers, cb]);
-  subscribeToTickerOnWs(tickerName);
-};
-
-export const unsubscribeFromTicker = (ticker) => {
-  tickersHandlers.delete(ticker);
 };
 
 export const fetchTickerList = async () =>
