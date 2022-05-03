@@ -1,14 +1,14 @@
 <template>
-  <v-snackbar
-    :color="snackbar.color"
-    :timeout="5000"
-    v-model="snackbar.isVisible"
-    shaped
-    top
-  >
-    {{ snackbar.message }}
-  </v-snackbar>
-  <v-app>
+  <v-app
+    ><v-snackbar
+      :color="snackbar.color"
+      :timeout="5000"
+      v-model="snackbar.isVisible"
+      shaped
+      top
+    >
+      {{ snackbar.message }}
+    </v-snackbar>
     <v-main>
       <v-container>
         <v-row justify="center">
@@ -78,12 +78,13 @@
                 t.name === selectedTicker?.name ? 'outlined' : 'contained'
               "
               elevation="4"
+              :color="t.isInvalid ? '#ffd9e0' : ''"
               @click="selectTicker(t)"
             >
               <div class="pa-4 text-center">
                 <dt class="text-subtitle-2">{{ t.name }} - USD</dt>
                 <dd class="text-subtitle-1">
-                  {{ t.price }}
+                  {{ t.price || "-" }}
                 </dd>
                 <div class="border-gray-200"></div>
               </div>
@@ -143,7 +144,12 @@
 // [x] When deleting a ticker, the choice remains
 
 import { values } from "lodash";
-import { subscribeToTicker, unsubscribeFromTicker } from "./helpers";
+import {
+  subscribeToTicker,
+  unsubscribeFromTicker,
+  getTickersData,
+  setTickersData,
+} from "./helpers";
 import { fetchTickerList } from "@/api";
 
 export default {
@@ -211,7 +217,11 @@ export default {
       }
     },
 
-    updateTicker(tickerName, price) {
+    updateTicker(tickerName, price, tickerIsValid = true) {
+      if (!tickerIsValid) {
+        this.tickers.find((t) => t.name === tickerName).isInvalid = true;
+      }
+
       this.tickers
         .filter((t) => t.name === tickerName)
         .forEach((t) => {
@@ -369,14 +379,11 @@ export default {
     );
     if (windowData.filter) this.filter = windowData.filter;
     if (windowData.page) this.page = parseInt(windowData.page);
-    const tickersData = localStorage.getItem("cryptonomicon-list");
+    this.tickers = getTickersData() ?? [];
 
-    if (tickersData) {
-      this.tickers = JSON.parse(tickersData);
-      this.tickers.forEach(({ name }) => {
-        subscribeToTicker(name, this.updateTicker);
-      });
-    }
+    this.tickers.forEach(({ name }) => {
+      subscribeToTicker(name, this.updateTicker);
+    });
   },
 
   watch: {
@@ -386,10 +393,7 @@ export default {
 
     tickers: {
       handler() {
-        localStorage.setItem(
-          "cryptonomicon-list",
-          JSON.stringify(this.tickers)
-        );
+        setTickersData(this.tickers);
         this.tickers.forEach(({ name }) => {
           subscribeToTicker(name, this.updateTicker);
         });

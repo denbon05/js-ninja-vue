@@ -3,18 +3,23 @@ import { tickersHandlers } from "@/helpers";
 
 const CRYPTO_API_KEY = process.env.VUE_APP_CRYPTO_API_KEY;
 const AGGREGATE_IDX = "5";
+const INVALID_TYPE = {
+  idx: "500",
+  msg: "INVALID_SUB",
+};
 
-const socket = new WebSocket(
-  `wss://streamer.cryptocompare.com/v2?api_key=${CRYPTO_API_KEY}`
-);
+const cryptoURI = new URL("wss://streamer.cryptocompare.com/v2");
+cryptoURI.searchParams.set("api_key", CRYPTO_API_KEY);
+
+const socket = new WebSocket(cryptoURI.toString());
 
 const channel = new BroadcastChannel("crypto");
 const receiver = new BroadcastChannel("crypto");
 
 receiver.addEventListener("message", ({ data }) => {
-  const { currency: curr, newPrice: price } = JSON.parse(data);
+  const { currency: curr, newPrice: price, tickerIsValid } = JSON.parse(data);
   const handlers = tickersHandlers.get(curr) ?? [];
-  handlers.forEach((fn) => fn(curr, price));
+  handlers.forEach((fn) => fn(curr, price, tickerIsValid));
 });
 
 socket.addEventListener("message", (e) => {
@@ -22,7 +27,18 @@ socket.addEventListener("message", (e) => {
     TYPE: type,
     FROMSYMBOL: currency,
     PRICE: newPrice,
+    MESSAGE: message,
+    PARAMETER: parameter,
   } = JSON.parse(e.data);
+
+  const tickerIsInValid =
+    message === INVALID_TYPE.msg && type === INVALID_TYPE.idx;
+
+  if (tickerIsInValid) {
+    const triedToReceiveCurrency = parameter.split("~").at(-2);
+    const handlers = tickersHandlers.get(triedToReceiveCurrency) ?? [];
+    handlers.forEach((fn) => fn(triedToReceiveCurrency, newPrice, false));
+  }
 
   if (type !== AGGREGATE_IDX || !newPrice) {
     return;
