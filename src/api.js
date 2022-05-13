@@ -16,6 +16,19 @@ const socket = new WebSocket(cryptoURI.toString());
 const channel = new BroadcastChannel("crypto");
 const receiver = new BroadcastChannel("crypto");
 
+const sendMessageBySocket = (fromSymbol, toSymbol = "USD") => {
+  const message = JSON.stringify({
+    action: "SubAdd",
+    subs: [`5~CCCAGG~${fromSymbol}~${toSymbol}`],
+  });
+
+  if (socket.readyState === socket.OPEN) {
+    socket.send(message);
+  }
+
+  return message;
+};
+
 receiver.addEventListener("message", ({ data }) => {
   const { currency: curr, newPrice: price, tickerIsValid } = JSON.parse(data);
   const handlers = tickersHandlers.get(curr) ?? [];
@@ -50,14 +63,7 @@ socket.addEventListener("message", (e) => {
 });
 
 export const subscribeToTickerOnWs = (tickerName) => {
-  const message = JSON.stringify({
-    action: "SubAdd",
-    subs: [`5~CCCAGG~${tickerName}~USD`],
-  });
-  if (socket.readyState === socket.OPEN) {
-    socket.send(message);
-    return;
-  }
+  const message = sendMessageBySocket(tickerName);
 
   socket.addEventListener(
     "open",
