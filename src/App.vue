@@ -13,43 +13,7 @@
       <v-container>
         <v-row justify="center">
           <v-col cols="12" md="6">
-            <v-form
-              v-model="isValidForm"
-              lazy-validation
-              ref="tickerForm"
-              class="d-flex flex-column mt-2"
-            >
-              <v-text-field
-                style="max-width: 100%; min-width: 300px"
-                variant="outlined"
-                label="Ticker"
-                autofocus
-                v-model="ticker"
-                @keyup.enter="() => addTicket()"
-                :rules="tickersValidation(tickers)"
-              ></v-text-field>
-              <section
-                v-if="tickerHints.length"
-                style="gap: 10px"
-                class="d-flex mb-2"
-              >
-                <v-btn
-                  :key="hint"
-                  v-for="hint in tickerHints"
-                  variant="outlined"
-                  @click="addTicket(hint)"
-                  >{{ hint }}</v-btn
-                >
-              </section>
-              <v-btn
-                @click="addTicket"
-                rounded="pill"
-                color="grey"
-                class="text--white"
-                width="100"
-                >Add</v-btn
-              >
-            </v-form>
+            <add-ticker @add-ticker="addTicker" :tickers="tickers" />
           </v-col>
           <v-col cols="12" md="6" class="d-flex flex-column">
             <section id="filter">
@@ -108,27 +72,11 @@
         <hr v-if="tickers.length" class="border-gray-600 my-4" />
         <v-row v-if="selectedTicker">
           <v-col cols="12">
-            <div ref="graphRef">
-              <section class="d-flex justify-space-between">
-                <h3 class="subtitle">{{ selectedTicker?.name }} - USD</h3>
-                <button @click="removeDashboard">
-                  <v-icon>mdi-close</v-icon>
-                </button>
-              </section>
-              <svg
-                class="sparkline"
-                :width="graphWidth"
-                :height="graphHeight"
-                :graphStroke-width="graphStroke"
-              >
-                <path class="sparkline--line" :d="shape" fill="none"></path>
-                <path
-                  class="sparkline--fill"
-                  :d="[shape, fillEndPath].join(' ')"
-                  graphStroke="none"
-                ></path>
-              </svg>
-            </div>
+            <ticker-graph
+              @close-graph="removeDashboard()"
+              v-model="selectedTicker"
+              :graph="graph"
+            />
           </v-col>
         </v-row>
       </v-container>
@@ -152,33 +100,24 @@
 // [x] normalizedGraph is broken if everywhere identical values
 // [x] When deleting a ticker, the choice remains
 
-import { nextTick } from "vue";
-import { values } from "lodash";
-import { useDisplay } from "vuetify";
-import { tickersValidation } from "@/validation";
+import AddTicker from "@/components/AddTicker.vue";
+import TickerGraph from "@/components/TickerGraph.vue";
 import {
   subscribeToTicker,
   unsubscribeFromTicker,
   getTickersData,
   setTickersData,
 } from "./helpers";
-import { fetchTickerList } from "@/api";
 
 export default {
   name: "App",
-  setup() {
-    const display = useDisplay();
 
-    return { display };
+  components: {
+    AddTicker,
+    TickerGraph,
   },
 
   data: () => ({
-    graphStroke: 3,
-    graphWidth: 700,
-    graphHeight: 200,
-    maxGraphElements: 1,
-    isValidForm: true,
-
     snackbar: {
       isVisible: false,
       message: "",
@@ -189,17 +128,9 @@ export default {
       isSuccess: true,
       message: "",
     },
-    loadContextQuery: {
-      isLoading: false,
-      isSuccess: true,
-      message: "",
-    },
 
     filter: "",
-    ticker: "",
     tickers: [],
-    tickerHints: [],
-    allTickerHints: [],
     selectedTicker: null,
     graph: [],
     page: 1,
@@ -211,41 +142,6 @@ export default {
   }),
 
   methods: {
-    tickersValidation,
-    calculateMaxGraphElements() {
-      const graphContainer = this.$refs.graphRef;
-      if (!graphContainer) {
-        return;
-      }
-      this.graphWidth = graphContainer.clientWidth;
-      if (this.display.mdAndDown.value) {
-        this.maxGraphElements = Math.ceil(graphContainer.clientWidth / 20);
-        console.log(this.maxGraphElements);
-        return;
-      }
-      this.maxGraphElements = Math.ceil(graphContainer.clientWidth / 10);
-      console.log(this.maxGraphElements);
-    },
-
-    async loadContext() {
-      const { loadContextQuery } = this;
-      loadContextQuery.isLoading = true;
-      try {
-        const {
-          data: { Data: tickerList },
-        } = await fetchTickerList();
-        this.allTickerHints = tickerList;
-        loadContextQuery.isLoading = { isSuccess: true, isLoading: false };
-      } catch (err) {
-        console.error(err);
-        this.loadContextQuery = {
-          isLoading: false,
-          isSuccess: false,
-          message: err.message,
-        };
-      }
-    },
-
     updateTicker(tickerName, price, tickerIsValid = true) {
       if (!tickerIsValid) {
         this.tickers.find((t) => t.name === tickerName).isInvalid = true;
@@ -266,22 +162,12 @@ export default {
         });
     },
 
-    selectHint({ symbol }) {
-      this.ticker = symbol;
-      this.addTicket();
-    },
-
-    async addTicket(tickerName) {
-      const { valid: isValidForm } = await this.$refs.tickerForm.validate();
-      this.isValidForm = isValidForm;
-      if (isValidForm) {
-        const currentTicker = {
-          name: tickerName ?? this.ticker.toUpperCase(),
-          price: "-",
-        };
-        this.tickers = [...this.tickers, currentTicker];
-        this.ticker = "";
-      }
+    async addTicker(tickerName) {
+      const currentTicker = {
+        name: tickerName.toUpperCase(),
+        price: "-",
+      };
+      this.tickers = [...this.tickers, currentTicker];
     },
 
     removeDashboard() {
@@ -291,6 +177,9 @@ export default {
     removeTicker(t) {
       this.tickers = this.tickers.filter(({ name }) => name !== t.name);
       unsubscribeFromTicker(t.name);
+      if (t.name === this.selectedTicker?.name) {
+        this.selectedTicker = null;
+      }
     },
 
     selectTicker(t) {
@@ -307,50 +196,6 @@ export default {
   },
 
   computed: {
-    shape() {
-      const graphStroke = this.graphStroke;
-      const graphWidth = this.graphWidth;
-      const graphHeight = this.graphHeight - graphStroke * 2;
-
-      const normalizedGraph = this.normalizedGraph || [];
-      const highestPoint = Math.max.apply(null, normalizedGraph);
-      const coordinates = [];
-      const totalPoints = this.normalizedGraph.length - 1;
-
-      normalizedGraph.forEach((item, n) => {
-        const x = (n / totalPoints) * graphWidth + graphStroke;
-        const y =
-          graphHeight - (item / highestPoint) * graphHeight + graphStroke;
-
-        coordinates.push({ x, y });
-      });
-      const coordinate = coordinates.at(0);
-
-      if (!coordinate?.x || !coordinate?.y) {
-        return (
-          "M 0 " +
-          this.graphStroke +
-          " L 0 " +
-          this.graphStroke +
-          " L " +
-          this.graphWidth +
-          " " +
-          this.graphStroke
-        );
-      }
-
-      const path = [];
-
-      coordinates.forEach((point) =>
-        path.push(["L", point.x, point.y].join(" "))
-      );
-
-      return ["M" + coordinates[0].x, coordinates[0].y, ...path].join(" ");
-    },
-    fillEndPath() {
-      return `V ${this.graphHeight} L 4 ${this.graphHeight} Z`;
-    },
-
     beginPaginationIdx() {
       return (this.page - 1) * 6;
     },
@@ -383,19 +228,6 @@ export default {
       };
     },
 
-    normalizedGraph() {
-      const maxValue = Math.max(...this.graph);
-      const minValue = Math.min(...this.graph);
-
-      if (maxValue === minValue) {
-        return this.graph.map(() => 50);
-      }
-
-      return this.graph.map(
-        (price) => 5 + ((price - minValue) * 95) / (maxValue - minValue)
-      );
-    },
-
     dashboardXBy() {
       const { firstItemPx, graphItemPerPx } = this.graphView;
       let x = firstItemPx;
@@ -406,17 +238,7 @@ export default {
     },
   },
 
-  mounted() {
-    window.addEventListener("resize", this.calculateMaxGraphElements);
-  },
-
-  beforeUnmount() {
-    window.removeEventListener("resize", this.calculateMaxGraphElements);
-  },
-
   created() {
-    this.loadContext();
-
     const windowData = Object.fromEntries(
       new URL(window.location).searchParams.entries()
     );
@@ -432,9 +254,6 @@ export default {
   watch: {
     selectedTicker() {
       this.graph = [];
-      nextTick(() => {
-        this.calculateMaxGraphElements();
-      });
     },
 
     tickers: {
@@ -465,22 +284,6 @@ export default {
       },
       deep: true,
       immediate: false,
-    },
-
-    ticker(value) {
-      this.$refs.tickerForm.resetValidation();
-      const { allTickerHints } = this;
-      if (!value) {
-        this.tickerHints = [];
-      } else {
-        this.tickerHints = values(allTickerHints)
-          .filter(
-            ({ Symbol, FullName }) =>
-              FullName.includes(value) || Symbol.includes(value)
-          )
-          .slice(0, 4)
-          .map(({ Symbol }) => Symbol);
-      }
     },
 
     pageStateOptions(value) {
